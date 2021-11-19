@@ -8,7 +8,7 @@ Final project for CS 7643 Deep Learning focusing on reproducing the results deta
 
 
 ## References
-This codebase reproduces algorithms found in the following work:
+This codebase reproduces the MonoDepthSeg architecture described in the following work:
 
 > **Self-Supervised Monocular Scene Decomposition and Depth Estimation**
 >
@@ -20,11 +20,14 @@ No public code implementations for this work currently exist.
 
 ---
 
-This codebase also uses architectures and computational techniques from the following work: 
+This codebase also uses model architectures and utility functions from the following work per their non-commercial use license: 
 > **Digging into Self-Supervised Monocular Depth Prediction**
 >
 > [Clément Godard](http://www0.cs.ucl.ac.uk/staff/C.Godard/), [Oisin Mac Aodha](http://vision.caltech.edu/~macaodha/), [Michael Firman](http://www.michaelfirman.co.uk) and [Gabriel J. Brostow](http://www0.cs.ucl.ac.uk/staff/g.brostow/)
-
+>
 > [ICCV 2019 (arXiv pdf)](https://arxiv.org/abs/1806.01260)
-
+>
 > [nianticlabs/monodepth2 (Github)](https://github.com/nianticlabs/monodepth2)
+> 
+> Copyright © Niantic, Inc. 2018. Patent Pending.
+
