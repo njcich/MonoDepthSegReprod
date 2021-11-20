@@ -14,7 +14,8 @@ import json
 
 from utils import *
 from kitti_utils import *
-from layers import *
+from utils.train_utils import *
+from utils.loss_utils import *
 
 import datasets
 import networks

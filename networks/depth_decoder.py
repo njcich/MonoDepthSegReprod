@@ -1,11 +1,10 @@
-# Copyright Niantic 2019. Patent Pending. All rights reserved.
 
 import numpy as np
 import torch
 import torch.nn as nn
 
 from collections import OrderedDict
-from layers import *
+from utils.torch_utils import *
 
 
 class DepthDecoder(nn.Module):
