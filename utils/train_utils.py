@@ -11,8 +11,6 @@ import torch
 import torch.nn as nn
 
 
-
-
 class BackprojectDepth(nn.Module):
     """Layer to transform a depth image into a point cloud
     """
