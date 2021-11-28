@@ -14,9 +14,9 @@ import json
 
 # These imports can be cleaned up/made more specific later
 # TODO: Add datset files to repo + clean/move utility functions to a utils.dataset_utils file
-from kitti_utils import *
 import datasets
 
+from utils.kitti_utils import *
 from utils.train_utils import *
 from utils.loss_utils import *
 
@@ -167,7 +167,7 @@ class Trainer:
     def run_epoch(self):
         """Run a single epoch of training and validation
         """
-        self.model_lr_scheduler.step()
+        # self.model_lr_scheduler.step()
 
         print("Training")
         self.set_train()
@@ -181,6 +181,10 @@ class Trainer:
             self.model_optimizer.zero_grad()
             losses["loss"].backward()
             self.model_optimizer.step()
+
+            # Added
+            if batch_idx == 0:
+                self.model_lr_scheduler.step()
 
             duration = time.time() - before_op_time
 
