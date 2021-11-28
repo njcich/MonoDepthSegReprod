@@ -37,23 +37,40 @@ class Trainer:
 
         self.device = device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # TODO: How is this used/ what for? Leave it in code for now since part of loss calc and used in
-        # MonoDataset class and is part of the data formatting used to train
+        # TODO: this is used to scale data; we only want to use 1 scale (0) to keep as original scale
+        # Keeping this for consistancy with depth decoder and dataset API remove everywhere else as only using 1 scale
         self.num_scales = len(self.opt.scales)
 
         assert self.opt.frame_ids[0] == 0, "frame_ids must start with 0"
 
         # Initialize the Depth Decoder/Encoders and add parameters to training list
-        self.models["encoder"] = networks.DepthEncoder(self.opt.num_layers, self.opt.weights_init == "pretrained")
-        self.models["encoder"].to(self.device)
-        self.parameters_to_train += list(self.models["encoder"].parameters())
+        self.models["depth_encoder"] = networks.DepthEncoder(self.opt.num_layers, self.opt.weights_init == "pretrained")
+        self.models["depth_encoder"].to(self.device)
+        self.parameters_to_train += list(self.models["depth_encoder"].parameters())
 
-        self.models["depth"] = networks.DepthDecoder(self.models["encoder"].num_ch_enc, self.opt.scales)
-        self.models["depth"].to(self.device)
-        self.parameters_to_train += list(self.models["depth"].parameters())
+        self.models["depth_decoder"] = networks.DepthDecoder(self.models["depth_encoder"].num_ch_enc, self.opt.scales)
+        self.models["depth_decoder"].to(self.device)
+        self.parameters_to_train += list(self.models["depth_decoder"].parameters())
 
         # TODO: Add pose network based on the MonoDepthSeg paper (DeepLabv3 + enhancements)
 
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         self.model_optimizer = optim.Adam(self.parameters_to_train, self.opt.learning_rate)
         self.model_lr_scheduler = optim.lr_scheduler.StepLR(self.model_optimizer, self.opt.scheduler_step_size, 0.1)
 
@@ -80,6 +97,8 @@ class Trainer:
 
         num_train_samples = len(train_filenames)
         self.num_total_steps = num_train_samples // self.opt.batch_size * self.opt.num_epochs
+        
+
 
         # Initialize the training and validation dataloaders
         train_dataset = self.dataset(self.opt.data_path, train_filenames, self.opt.height, self.opt.width,
@@ -93,27 +112,27 @@ class Trainer:
                                      pin_memory=True, drop_last=True)
         self.val_iter = iter(self.val_loader)
 
+
         # Tensorboard data loggers
         self.writers = {}
         for mode in ["train", "val"]:
             self.writers[mode] = SummaryWriter(log_dir=os.path.join(self.log_path, mode))
 
+        
+        
         # TODO: Using this in MonoDepthSeg therefore modify this as not an option to use to calculate final loss
         if not self.opt.no_ssim:
             self.ssim = SSIM()
             self.ssim.to(self.device)
 
-        self.backproject_depth = {}
-        self.project_3d = {}
-        for scale in self.opt.scales:
-            h = self.opt.height // (2 ** scale)
-            w = self.opt.width // (2 ** scale)
+        
+        # Define depth backprojection and 3D projection helper functions 
+        self.backproject_depth = BackprojectDepth(self.opt.batch_size, self.opt.height, self.opt.width)
+        self.backproject_depth.to(self.device)
 
-            self.backproject_depth[scale] = BackprojectDepth(self.opt.batch_size, h, w)
-            self.backproject_depth[scale].to(self.device)
-
-            self.project_3d[scale] = Project3D(self.opt.batch_size, h, w)
-            self.project_3d[scale].to(self.device)
+        self.project_3d = Project3D(self.opt.batch_size, self.opt.height, self.opt.width)
+        self.project_3d.to(self.device)
+        
 
         self.depth_metric_names = ["de/abs_rel", "de/sq_rel", "de/rms", "de/log_rms", "da/a1", "da/a2", "da/a3"]
 
@@ -180,23 +199,90 @@ class Trainer:
 
             self.step += 1
 
+
+
     def process_batch(self, inputs):
         """Pass a minibatch through the network and generate images and losses
         """
         for key, ipt in inputs.items():
             inputs[key] = ipt.to(self.device)
 
-        features = self.models["encoder"](inputs["color_aug", 0, 0])
-        outputs = self.models["depth"](features)
+        # input image augmented; frame 0 (-1, 0, 1); scale 0 (orig scale)
+        features = self.models["depth_encoder"](inputs["color_aug", 0, 0])
+        outputs = self.models["depth_decoder"](features)
 
-        self.generate_images_pred(inputs, outputs)
+
+
+        # TODO: this seems specific to mondepthv2
+        # Taking out depth stuff and putting it here
+       
+        # Compute depth from output of the network
+        
+        # for scale in self.opt.scales:
+
+        disp = outputs[("disp", 0)]
+        disp = F.interpolate(disp, [self.opt.height, self.opt.width], mode="bilinear", align_corners=False)
+
+        _, depth = disp_to_depth(disp, self.opt.min_depth, self.opt.max_depth)
+            
+        # Depth; frame 0; scale 0
+        outputs[("depth", 0, 0)] = depth
+
 
         # TODO: At this step we have generated the depth images; next step is to feed this to the Pose+Mask network
 
+
+
+
+
+        # TODO: After getting poses get predictions for loss calculations: 
+        '''For references see removed functions in original monodepth2 codebase in trainer 
+        everything related to the predict_poses() function 
+        Example of generating the warped (reprojected) color images for a minibatch.
+        Generated images are saved into the `outputs` dictionary.
+        Keeping example for reference on using helper functions
+        Changed from original for consitancy with just 1 scale
+        '''
+        # for i, frame_id in enumerate(self.opt.frame_ids[1:]):
+
+            # This was added before from a pose network; these T will be our predicted transformations this needs to be changed
+            # T = outputs[("cam_T_cam", 0, frame_id)] 
+
+            # cam_points = self.backproject_depth(depth, inputs[("inv_K", 0)])
+            # pix_coords = self.project_3d(cam_points, inputs[("K", 0)], T)
+
+            # outputs[("sample", frame_id, 0)] = pix_coords
+            # outputs[("color", frame_id, 0)] = F.grid_sample(inputs[("color", frame_id, 0)],
+            #                                                     outputs[("sample", frame_id, 0)],
+            #                                                     padding_mode="border")
+
+        
+
+
+            
+        
+        
+        
+        
+        
+
+        
         # TODO: Compute losses with methods described in MonoDepthSeg
         losses = self.compute_losses(inputs, outputs)
 
+        
+        
+        
         return outputs, losses
+
+
+
+
+
+
+
+
+
 
     def val(self):
         """Validate the model on a single minibatch
@@ -219,34 +305,9 @@ class Trainer:
 
         self.set_train()
 
-    def generate_images_pred(self, inputs, outputs):
-        """Generate the warped (reprojected) color images for a minibatch.
-        Generated images are saved into the `outputs` dictionary.
-        """
-        for scale in self.opt.scales:
-            disp = outputs[("disp", scale)]
-            if self.opt.v1_multiscale:
-                source_scale = scale
-            else:
-                disp = F.interpolate(
-                    disp, [self.opt.height, self.opt.width], mode="bilinear", align_corners=False)
-                source_scale = 0
 
-            _, depth = disp_to_depth(disp, self.opt.min_depth, self.opt.max_depth)
 
-            outputs[("depth", 0, scale)] = depth
 
-            for i, frame_id in enumerate(self.opt.frame_ids[1:]):
-
-                T = outputs[("cam_T_cam", 0, frame_id)]
-
-                cam_points = self.backproject_depth[source_scale](depth, inputs[("inv_K", source_scale)])
-                pix_coords = self.project_3d[source_scale](cam_points, inputs[("K", source_scale)], T)
-
-                outputs[("sample", frame_id, scale)] = pix_coords
-                outputs[("color", frame_id, scale)] = F.grid_sample(inputs[("color", frame_id, source_scale)],
-                                                                    outputs[("sample", frame_id, scale)],
-                                                                    padding_mode="border")
 
     # TODO: This will probably need to be modified with methods in MonoDepthSeg
     def compute_reprojection_loss(self, pred, target):
@@ -413,31 +474,19 @@ class Trainer:
             writer.add_scalar("{}".format(l), v, self.step)
 
         for j in range(min(4, self.opt.batch_size)):  # write a maxmimum of four images
-            for s in self.opt.scales:
-                for frame_id in self.opt.frame_ids:
-                    writer.add_image(
-                        "color_{}_{}/{}".format(frame_id, s, j),
-                        inputs[("color", frame_id, s)][j].data, self.step)
-                    if s == 0 and frame_id != 0:
-                        writer.add_image(
-                            "color_pred_{}_{}/{}".format(frame_id, s, j),
-                            outputs[("color", frame_id, s)][j].data, self.step)
+            
+            # Changed to only do this for scale 0
+            for frame_id in self.opt.frame_ids:
+                writer.add_image("color_{}_{}/{}".format(frame_id, 0, j), 
+                                 inputs[("color", frame_id, 0)][j].data, self.step)
+                
+                if frame_id != 0:
+                    writer.add_image("color_pred_{}_{}/{}".format(frame_id, 0, j),
+                                     outputs[("color", frame_id, 0)][j].data, self.step)
 
-                writer.add_image(
-                    "disp_{}/{}".format(s, j),
-                    normalize_image(outputs[("disp", s)][j]), self.step)
+            writer.add_image("disp_{}/{}".format(0, j), normalize_image(outputs[("disp", 0)][j]), self.step)
 
-                if self.opt.predictive_mask:
-                    for f_idx, frame_id in enumerate(self.opt.frame_ids[1:]):
-                        writer.add_image(
-                            "predictive_mask_{}_{}/{}".format(frame_id, s, j),
-                            outputs["predictive_mask"][("disp", s)][j, f_idx][None, ...],
-                            self.step)
 
-                elif not self.opt.disable_automasking:
-                    writer.add_image(
-                        "automask_{}/{}".format(s, j),
-                        outputs["identity_selection/{}".format(s)][j][None, ...], self.step)
 
     def save_opts(self):
         """Save options to disk so we know what we ran this experiment with
@@ -447,7 +496,63 @@ class Trainer:
             os.makedirs(models_dir)
         to_save = self.opt.__dict__.copy()
 
-        with open(os.path.join(models_dir, 'opt.json'), 'w') as f:
+        with open(os.path.join(modef predict_poses(self, inputs, features):
+        """Predict poses between input frames for monocular sequences.
+        """
+        outputs = {}
+        if self.num_pose_frames == 2:
+            # In this setting, we compute the pose to each source frame via a
+            # separate forward pass through the pose network.
+
+            # select what features the pose network takes as input
+            if self.opt.pose_model_type == "shared":
+                pose_feats = {f_i: features[f_i] for f_i in self.opt.frame_ids}
+            else:
+                pose_feats = {f_i: inputs["color_aug", f_i, 0] for f_i in self.opt.frame_ids}
+
+            for f_i in self.opt.frame_ids[1:]:
+                if f_i != "s":
+                    # To maintain ordering we always pass frames in temporal order
+                    if f_i < 0:
+                        pose_inputs = [pose_feats[f_i], pose_feats[0]]
+                    else:
+                        pose_inputs = [pose_feats[0], pose_feats[f_i]]
+
+                    if self.opt.pose_model_type == "separate_resnet":
+                        pose_inputs = [self.models["pose_encoder"](torch.cat(pose_inputs, 1))]
+                    elif self.opt.pose_model_type == "posecnn":
+                        pose_inputs = torch.cat(pose_inputs, 1)
+
+                    axisangle, translation = self.models["pose"](pose_inputs)
+                    outputs[("axisangle", 0, f_i)] = axisangle
+                    outputs[("translation", 0, f_i)] = translation
+
+                    # Invert the matrix if the frame id is negative
+                    outputs[("cam_T_cam", 0, f_i)] = transformation_from_parameters(
+                        axisangle[:, 0], translation[:, 0], invert=(f_i < 0))
+
+        else:
+            # Here we input all frames to the pose net (and predict all poses) together
+            if self.opt.pose_model_type in ["separate_resnet", "posecnn"]:
+                pose_inputs = torch.cat(
+                    [inputs[("color_aug", i, 0)] for i in self.opt.frame_ids if i != "s"], 1)
+
+                if self.opt.pose_model_type == "separate_resnet":
+                    pose_inputs = [self.models["pose_encoder"](pose_inputs)]
+
+            elif self.opt.pose_model_type == "shared":
+                pose_inputs = [features[i] for i in self.opt.frame_ids if i != "s"]
+
+            axisangle, translation = self.models["pose"](pose_inputs)
+
+            for i, f_i in enumerate(self.opt.frame_ids[1:]):
+                if f_i != "s":
+                    outputs[("axisangle", 0, f_i)] = axisangle
+                    outputs[("translation", 0, f_i)] = translation
+                    outputs[("cam_T_cam", 0, f_i)] = transformation_from_parameters(
+                        axisangle[:, i], translation[:, i])
+
+        return outputsdels_dir, 'opt.json'), 'w') as f:
             json.dump(to_save, f, indent=2)
 
     def save_model(self):
