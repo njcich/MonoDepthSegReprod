@@ -37,11 +37,7 @@ class MonodepthOptions:
                                  help="which training split to use",
                                  choices=["eigen_zhou", "eigen_full", "odom", "benchmark"],
                                  default="eigen_zhou")
-        self.parser.add_argument("--num_layers",
-                                 type=int,
-                                 help="number of resnet layers",
-                                 default=18,
-                                 choices=[18, 34, 50, 101, 152])
+        
         self.parser.add_argument("--dataset",
                                  type=str,
                                  help="dataset to train on",
@@ -118,11 +114,12 @@ class MonodepthOptions:
         self.parser.add_argument("--no_ssim",
                                  help="if set, disables ssim in the loss",
                                  action="store_true")
-        self.parser.add_argument("--weights_init",
-                                 type=str,
-                                 help="pretrained or scratch",
-                                 default="pretrained",
-                                 choices=["pretrained", "scratch"])
+        
+        
+        
+        
+        
+        
         self.parser.add_argument("--pose_model_input",
                                  type=str,
                                  help="how many images the pose network gets",
