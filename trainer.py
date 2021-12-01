@@ -15,6 +15,7 @@ import json
 # These imports can be cleaned up/made more specific later
 # TODO: Add datset files to repo + clean/move utility functions to a utils.dataset_utils file
 import datasets
+from networks import pose_mask_encoder
 
 from utils.kitti_utils import *
 from utils.train_utils import *
@@ -39,35 +40,30 @@ class Trainer:
 
         # TODO: this is used to scale data; we only want to use 1 scale (0) to keep as original scale
         # Keeping this for consistancy with depth decoder and dataset API remove everywhere else as only using 1 scale
-        self.num_scales = len(self.opt.scales)
+        # self.num_scales = len(self.opt.scales)
 
         assert self.opt.frame_ids[0] == 0, "frame_ids must start with 0"
 
         # Initialize the Depth Decoder/Encoders and add parameters to training list
-        self.models["depth_encoder"] = networks.DepthEncoder(self.opt.num_layers, self.opt.weights_init == "pretrained")
+        self.models["depth_encoder"] = networks.DepthEncoder()
         self.models["depth_encoder"].to(self.device)
-        self.parameters_to_train += list(self.models["depth_encoder"].parameters())
+        self.parameters_to_train.append(list(self.models["depth_encoder"].parameters()))
 
-        self.models["depth_decoder"] = networks.DepthDecoder(self.models["depth_encoder"].num_ch_enc, self.opt.scales)
+        self.models["depth_decoder"] = networks.DepthDecoder(num_ch_enc=self.models["depth_encoder"].num_ch_enc)
         self.models["depth_decoder"].to(self.device)
-        self.parameters_to_train += list(self.models["depth_decoder"].parameters())
+        self.parameters_to_train.append(list(self.models["depth_decoder"].parameters()))
 
-        # TODO: Add pose network based on the MonoDepthSeg paper (DeepLabv3 + enhancements)
-
+        self.models["pose_mask_encoder"] = networks.PoseMaskEncoder()
+        self.models["pose_mask_encoder"].to(self.device)
+        self.parameters_to_train.append(list(self.models["pose_mask_encoder"].parameters()))
         
+        # TODO: Add mask decoder when finalized class
+                
+            
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        self.models["pose_decoder"] = networks.PoseDecoder(self.models["pose_mask_encoder"].num_ch_enc)
+        self.models["pose_decoder"].to(self.device)
+        self.parameters_to_train.append(list(self.models["pose_decoder"].parameters()))
         
         
         
@@ -211,6 +207,9 @@ class Trainer:
         for key, ipt in inputs.items():
             inputs[key] = ipt.to(self.device)
 
+        # Convention: 0 is target frame; -1 is source frame
+        
+        
         # input image augmented; frame 0 (-1, 0, 1); scale 0 (orig scale)
         features = self.models["depth_encoder"](inputs["color_aug", 0, 0])
         outputs = self.models["depth_decoder"](features)
@@ -231,14 +230,26 @@ class Trainer:
             
         # Depth; frame 0; scale 0
         outputs[("depth", 0, 0)] = depth
-
+        
 
         # TODO: At this step we have generated the depth images; next step is to feed this to the Pose+Mask network
 
+            
+        #TODO: Feed to the PoseMaskEncoder
+        
+        
+        #TODO: Feed to the pose decoder 
+        
+        # 
+        
+        
+        
+        #TODO: Feed to the mask decoder
 
-
-
-
+        
+        
+        
+        
         # TODO: After getting poses get predictions for loss calculations: 
         '''For references see removed functions in original monodepth2 codebase in trainer 
         everything related to the predict_poses() function 
