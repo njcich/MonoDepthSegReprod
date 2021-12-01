@@ -8,20 +8,17 @@ from utils.torch_utils import *
 
 
 class MaskDecoder(nn.Module):
-    def __init__(self, num_ch_enc, scales=range(4), num_output_channels=1, use_skips=True):
+    def __init__(self, num_ch_enc, num_output_channels=1, use_skips=True):
         super(MaskDecoder, self).__init__()
 
         self.num_output_channels = num_output_channels
         self.use_skips = use_skips
         self.upsample_mode = 'nearest'
-        self.scales = scales
 
         self.num_ch_enc = num_ch_enc
         self.num_ch_dec = np.array([16, 32, 64, 128, 256])
 
-        # decoder
         self.convs = OrderedDict()
-
         
         # TODO: Change last channel to be K masks
         for i in range(4, -1, -1):
@@ -37,11 +34,7 @@ class MaskDecoder(nn.Module):
             num_ch_out = self.num_ch_dec[i]
             self.convs[("upconv", i, 1)] = ConvBlock(num_ch_in, num_ch_out)
         
-        
-        # TODO: Is this specific to the depth decoder; i think this is for disparity so 
-        # Remove scaling stuff not needed
-        for s in self.scales:
-            self.convs[("dispconv", s)] = Conv3x3(self.num_ch_dec[s], self.num_output_channels)
+        self.convs[("maskconv", 0)] = Conv3x3(self.num_ch_dec[0], self.num_output_channels)
 
         self.decoder = nn.ModuleList(list(self.convs.values()))
         
@@ -62,8 +55,7 @@ class MaskDecoder(nn.Module):
             x = torch.cat(x, 1)
             x = self.convs[("upconv", i, 1)](x)
             
-            # 
-            if i in self.scales:
-                self.outputs[("disp", i)] = self.sigmoid(self.convs[("dispconv", i)](x))
+            # needs to be fed through the masking process not the sigmoid 
+            # self.outputs[("masks", i)] = self.sigmoid(self.convs[("maskconv", i)](x))
 
         return self.outputs

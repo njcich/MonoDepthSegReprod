@@ -231,56 +231,61 @@ class Trainer:
         # Depth; frame 0; scale 0
         outputs[("depth", 0, 0)] = depth
         
-
         # TODO: At this step we have generated the depth images; next step is to feed this to the Pose+Mask network
 
-            
-        #TODO: Feed to the PoseMaskEncoder
-        
-        
-        #TODO: Feed to the pose decoder 
-        
-        # 
-        
-        
-        
-        #TODO: Feed to the mask decoder
+
+    
+        # TODO: Feed to the pose mask features to the mask decoder
 
         
         
-        
-        
-        # TODO: After getting poses get predictions for loss calculations: 
-        '''For references see removed functions in original monodepth2 codebase in trainer 
-        everything related to the predict_poses() function 
-        Example of generating the warped (reprojected) color images for a minibatch.
-        Generated images are saved into the `outputs` dictionary.
-        Keeping example for reference on using helper functions
-        Changed from original for consitancy with just 1 scale
-        '''
-        # for i, frame_id in enumerate(self.opt.frame_ids[1:]):
-
-            # This was added before from a pose network; these T will be our predicted transformations this needs to be changed
-            # T = outputs[("cam_T_cam", 0, frame_id)] 
-
-            # cam_points = self.backproject_depth(depth, inputs[("inv_K", 0)])
-            # pix_coords = self.project_3d(cam_points, inputs[("K", 0)], T)
-
-            # outputs[("sample", frame_id, 0)] = pix_coords
-            # outputs[("color", frame_id, 0)] = F.grid_sample(inputs[("color", frame_id, 0)],
-            #                                                     outputs[("sample", frame_id, 0)],
-            #                                                     padding_mode="border")
-
-        
 
 
-            
         
         
         
         
+        # TODO: Below creates and feeds input to the Pose Mask encoder and gets the shared features
+        # Then feeds to the pose decoder accordingly to predict transformation 
+        # Pose Decoder currently only predicts one pose, needs to be updated for K pose predictions
+        # processing also needs to be done
         
+        # Make input by concatenating: predicted target depth, source image, and target image
+        pose_mask_inputs = torch.cat([outputs["depth", 0, 0], 
+                                      inputs[("color_aug", -1, 0)], 
+                                      inputs[("color_aug", 0, 0)]], 1)
+        
+        pose_mask_features = self.models["pose_mask_encoder"](pose_mask_inputs)
+        
+        # should be three frames correspodingly as depth, source, target
+        pose_mask_features = [torch.split(f, self.opt.batch_size) for f in pose_mask_features]
+        # Pass the features temporally 
+        pose_features = {-1 : pose_mask_features[1], 
+                          0 : pose_mask_features[2]}
+        pose_inputs = [pose_features[-1], pose_features[0]]
+        
+        axisangle, translation = self.models["pose_decoder"](pose_inputs)
 
+        outputs[("axisangle", 0, -1)] = axisangle
+        outputs[("translation", 0, -1)] = translation
+
+        # Invert the matrix if the frame id is negative
+        transformation = transformation_from_parameters(axisangle[:, 0], translation[:, 0], invert=True)
+        outputs[("cam_T_cam", 0, -1)] = transformation
+                
+        
+        cam_points = self.backproject_depth(depth, inputs[("inv_K", 0)])
+        pix_coords = self.project_3d(cam_points, inputs[("K", 0)], transformation)
+        
+        outputs[("sample", -1, 0)] = pix_coords
+        outputs[("color", -1, 0)] = F.grid_sample(inputs[("color", -1, 0)], 
+                                                  outputs[("sample", -1, 0)], 
+                                                  padding_mode="border")
+        
+        
+        
+        
+                
         
         # TODO: Compute losses with methods described in MonoDepthSeg
         losses = self.compute_losses(inputs, outputs)

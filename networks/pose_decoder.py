@@ -4,7 +4,7 @@ from collections import OrderedDict
 
 
 class PoseDecoder(nn.Module):
-    def __init__(self, num_ch_enc, num_input_features=3, num_frames_to_predict_for=1, stride=1):
+    def __init__(self, num_ch_enc, num_input_features=2, num_frames_to_predict_for=1, stride=1):
         super(PoseDecoder, self).__init__()
 
         self.num_ch_enc = num_ch_enc
