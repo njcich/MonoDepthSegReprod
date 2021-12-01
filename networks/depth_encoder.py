@@ -4,16 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.models as models
-import torch.utils.model_zoo as model_zoo
 
 
 class DepthEncoder(nn.Module):
-    def __init__(self, pretrained):
+    def __init__(self):
         super(DepthEncoder, self).__init__()
-        self.encoder = models.resnet50(pretrained)
-        self.num_ch_enc = np.array([64, 64, 128, 256, 512])
-        self.num_ch_enc[1:] *= 4 # Used if num_layers > 34 (ResNet):
-
+        self.encoder = models.resnet50(pretrained=True)
+        self.num_ch_enc = np.array([64, 256, 512, 1024, 2048])
 
     def forward(self, input_image):
         self.features = []
