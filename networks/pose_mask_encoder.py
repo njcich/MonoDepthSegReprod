@@ -10,10 +10,12 @@ class ResNetMultiImageInput(models.ResNet):
     """Constructs a resnet model with varying number of input images.
     Adapted from https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
     """
-    def __init__(self, block, layers, num_classes=1000, num_input_images=3):
+    def __init__(self, block, layers, num_classes=1000, num_input_images=2, num_depth_images=1):
         super(ResNetMultiImageInput, self).__init__(block, layers)
         self.inplanes = 64
-        self.conv1 = nn.Conv2d(num_input_images*3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        
+        self.conv1 = nn.Conv2d((num_input_images*3 + num_depth_images), 
+                               64, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -31,7 +33,7 @@ class ResNetMultiImageInput(models.ResNet):
 
 
 class PoseMaskEncoder(nn.Module):
-    def __init__(self, num_input_images=3):
+    def __init__(self, num_input_images=2, num_depth_images=1):
         super(PoseMaskEncoder, self).__init__()
 
         # Parameter for Resnet50
@@ -41,8 +43,19 @@ class PoseMaskEncoder(nn.Module):
         
         model = ResNetMultiImageInput(block=block_type, layers=blocks)
 
-        loaded = model_zoo.load_url(models.resnet.model_urls['resnet50'])
+        loaded = model_zoo.load_url(models.resnet.model_urls['resnet50'])        
         loaded['conv1.weight'] = torch.cat([loaded['conv1.weight']] * num_input_images, 1) / num_input_images
+
+        conv1_weights = loaded['conv1.weight'].data
+        new_weights = torch.zeros((conv1_weights.shape[0],
+                                   conv1_weights.shape[1] + num_depth_images,
+                                   conv1_weights.shape[2],
+                                   conv1_weights.shape[3]))
+        
+        new_weights[:,:6, :, :] = conv1_weights
+        new_weights[:,6:7, :, :] = conv1_weights[:,0:1,:,:]
+        loaded['conv1.weight'] = new_weights
+        
         model.load_state_dict(loaded)
 
         self.encoder = model

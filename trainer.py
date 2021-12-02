@@ -240,7 +240,7 @@ class Trainer:
         
         
 
-
+        
         
         
         
@@ -264,6 +264,8 @@ class Trainer:
                           0 : pose_mask_features[2]}
         pose_inputs = [pose_features[-1], pose_features[0]]
         
+        
+        #  TODO: Modify for K 
         axisangle, translation = self.models["pose_decoder"](pose_inputs)
 
         outputs[("axisangle", 0, -1)] = axisangle
@@ -278,6 +280,8 @@ class Trainer:
         pix_coords = self.project_3d(cam_points, inputs[("K", 0)], transformation)
         
         outputs[("sample", -1, 0)] = pix_coords
+        
+        
         outputs[("color", -1, 0)] = F.grid_sample(inputs[("color", -1, 0)], 
                                                   outputs[("sample", -1, 0)], 
                                                   padding_mode="border")

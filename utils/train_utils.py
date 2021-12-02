@@ -66,7 +66,7 @@ class Project3D(nn.Module):
         pix_coords = (pix_coords - 0.5) * 2
         return pix_coords
 
-#
+
 def transformation_from_parameters(axisangle, translation, invert=False):
     """Convert the network's (axisangle, translation) output into a 4x4 matrix
     """
