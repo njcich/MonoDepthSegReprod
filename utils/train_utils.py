@@ -1,14 +1,15 @@
-
-
 import os
 import hashlib
 import zipfile
 from six.moves import urllib
 
 import numpy as np
+import pdb 
 
 import torch
 import torch.nn as nn
+
+import time
 
 
 class BackprojectDepth(nn.Module):
@@ -34,6 +35,7 @@ class BackprojectDepth(nn.Module):
         self.pix_coords = nn.Parameter(torch.cat([self.pix_coords, self.ones], 1),
                                        requires_grad=False)
 
+
     def forward(self, depth, inv_K):
         cam_points = torch.matmul(inv_K[:, :3, :3], self.pix_coords)
         cam_points = depth.view(self.batch_size, 1, -1) * cam_points
@@ -45,25 +47,79 @@ class BackprojectDepth(nn.Module):
 class Project3D(nn.Module):
     """Layer which projects 3D points into a camera with intrinsics K and at position T
     """
-    def __init__(self, batch_size, height, width, eps=1e-7):
+    def __init__(self, batch_size, height, width, device, eps=1e-7):
         super(Project3D, self).__init__()
-
+        self.device = device
         self.batch_size = batch_size
         self.height = height
         self.width = width
         self.eps = eps
+        
+        
+    def forward(self, points, K, transformations, cam_points_masks):
+        '''
+        points: torch.Size([12, 4, 122880])
+        K.shape: torch.Size([12, 4, 4])
+        T.shape: torch.Size([12, 4, 4])
+        P.shape: torch.Size([12, 3, 4])
+        cam_points.shape: torch.Size([12, 3, 122880]) - transformed points
+        
+        |_  before 
+        
+        new : 
+        transfomations.shape: k length list torch.Size([batch, 4, 4])
+        cam_points_masks: (batch, K, height*width)
+        
+        '''
+        # P is K*T 
+        # cam_points = Px
+        
+        batch_size = cam_points_masks.shape[0]
+        num_K = cam_points_masks.shape[1]
+        num_points = cam_points_masks.shape[2]
+        
+        all_weighted_points = []
+        for k in range(num_K):
+            T_k =  transformations[k]
+            P_k = torch.matmul(K, T_k)[:, :3, :]
+            
+            
+            # mask.shape: (batch, num_points)
+            mask =  cam_points_masks[:, k, :]
+            # this has the weighting for transfomation k at point p for all samples in batch
+            # want to multiply this weighting by the points 3D points, 2nd dim of points :3
+            # then we can multiply these weight_points multiplying by P_k the transformation at mask k
+            
+            points_weighted = torch.ones(points.shape, device=self.device, requires_grad=False)
+            for i in range(3):
+                points_weighted[:,i,:] = mask*points[:,i,:]
+            
+            # transformed_weighted_points.shape: torch.Size([12, 3, 122880])
+            transformed_weighted_points = torch.matmul(P_k, points_weighted)
+            all_weighted_points.append(transformed_weighted_points)
+        
 
-    def forward(self, points, K, T):
-        P = torch.matmul(K, T)[:, :3, :]
-
-        cam_points = torch.matmul(P, points)
-
-        pix_coords = cam_points[:, :2, :] / (cam_points[:, 2, :].unsqueeze(1) + self.eps)
+        transformed_points = torch.zeros(transformed_weighted_points.shape, device=self.device, requires_grad=False)
+        for i in range(3):
+            for k in range(num_K):
+                transformed_points[:,i,:] =+ all_weighted_points[k][:,i,:]
+            
+            
+                
+        #This is the original 
+        # cam_points = torch.matmul(P, points)
+        # pdb.set_trace()
+        
+        
+        # above works for num_K > 1
+        
+        pix_coords = transformed_points[:, :2, :] / (transformed_points[:, 2, :].unsqueeze(1) + self.eps)
         pix_coords = pix_coords.view(self.batch_size, 2, self.height, self.width)
         pix_coords = pix_coords.permute(0, 2, 3, 1)
         pix_coords[..., 0] /= self.width - 1
         pix_coords[..., 1] /= self.height - 1
         pix_coords = (pix_coords - 0.5) * 2
+        
         return pix_coords
 
 
@@ -144,7 +200,6 @@ def rot_from_axisangle(vec):
     return rot
 
 
-
 def disp_to_depth(disp, min_depth, max_depth):
     """Convert network's sigmoid output into depth prediction
     The formula for this conversion is given in the 'additional considerations'
@@ -154,28 +209,8 @@ def disp_to_depth(disp, min_depth, max_depth):
     max_disp = 1 / min_depth
     scaled_disp = min_disp + (max_disp - min_disp) * disp
     depth = 1 / scaled_disp
+    
     return scaled_disp, depth
-
-
-def compute_depth_errors(gt, pred):
-    """Computation of error metrics between predicted and ground truth depths
-    """
-    thresh = torch.max((gt / pred), (pred / gt))
-    a1 = (thresh < 1.25     ).float().mean()
-    a2 = (thresh < 1.25 ** 2).float().mean()
-    a3 = (thresh < 1.25 ** 3).float().mean()
-
-    rmse = (gt - pred) ** 2
-    rmse = torch.sqrt(rmse.mean())
-
-    rmse_log = (torch.log(gt) - torch.log(pred)) ** 2
-    rmse_log = torch.sqrt(rmse_log.mean())
-
-    abs_rel = torch.mean(torch.abs(gt - pred) / gt)
-
-    sq_rel = torch.mean((gt - pred) ** 2 / gt)
-
-    return abs_rel, sq_rel, rmse, rmse_log, a1, a2, a3
 
 
 def readlines(filename):
@@ -183,15 +218,19 @@ def readlines(filename):
     """
     with open(filename, 'r') as f:
         lines = f.read().splitlines()
+    
     return lines
 
 
+
+# LOGGING UTILITY FUNCITONS
 def normalize_image(x):
     """Rescale image pixels to span range [0, 1]
     """
     ma = float(x.max().cpu().data)
     mi = float(x.min().cpu().data)
     d = ma - mi if ma != mi else 1e5
+    
     return (x - mi) / d
 
 
@@ -204,6 +243,7 @@ def sec_to_hm(t):
     t //= 60
     m = t % 60
     t //= 60
+    
     return t, m, s
 
 
@@ -213,3 +253,43 @@ def sec_to_hm_str(t):
     """
     h, m, s = sec_to_hm(t)
     return "{:02d}h{:02d}m{:02d}s".format(h, m, s)
+
+
+
+
+
+
+# def log_time(log_params, batch_idx, duration, loss):
+#         """Print a logging statement to the terminal
+#         """
+        
+#         samples_per_sec = log_params['batch_size']/ duration
+#         time_sofar = time.time() - log_params['start_time']
+#         training_time_left = (
+#             log_params['num_total_steps'] / log_params['step'] - 1.0) * time_sofar if log_params['step'] > 0 else 0
+#         print_string = "epoch {:>3} | batch {:>6} | examples/s: {:5.1f}" + \
+#             " | loss: {:.5f} | time elapsed: {} | time left: {}"
+#         print(print_string.format(log_params['epoch'], batch_idx, samples_per_sec, loss,
+#                                   sec_to_hm_str(time_sofar), sec_to_hm_str(training_time_left)))
+
+
+# def log(writers, log_params, mode, inputs, outputs, losses):
+#     """Write an event to the tensorboard events file
+#     """
+#     writer = writers[mode]
+    
+#     for l, v in losses.items():
+#         writer.add_scalar("{}".format(l), v, log_params['step'])
+
+#     for j in range(min(4, log_params['step'])):  # write a maxmimum of four images
+        
+#         writer.add_image("color_{}_{}/{}".format(-1, 0, j), 
+#                          inputs[("color", -1, 0)][j].data, 
+#                          log_params['step'])
+                    
+#         writer.add_image("color_pred_{}_{}/{}".format(0, 0, j),
+#                          outputs[("color", 0, 0)][j].data, 
+#                          log_params['step'])
+
+#         writer.add_image("disp_{}/{}".format(0, j), normalize_image(outputs[("disp", 0)][j]), log_params['step'])
+

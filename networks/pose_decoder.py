@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 from collections import OrderedDict
+import pdb
 
 
 class PoseDecoder(nn.Module):
-    def __init__(self, num_ch_enc, num_input_features=2, num_frames_to_predict_for=1, stride=1):
+    def __init__(self, num_ch_enc, num_input_features=1, num_frames_to_predict_for=5, stride=1):
         super(PoseDecoder, self).__init__()
 
         self.num_ch_enc = num_ch_enc
@@ -21,18 +22,18 @@ class PoseDecoder(nn.Module):
 
         self.net = nn.ModuleList(list(self.convs.values()))
 
-    def forward(self, input_features):
-        last_features = [f[-1] for f in input_features]
 
-        cat_features = [self.relu(self.convs["squeeze"](f)) for f in last_features]
-        cat_features = torch.cat(cat_features, 1)
+    def forward(self, input_features):
+        last_features = input_features[-1]
+        squeeze_features = [self.relu(self.convs["squeeze"](last_features))]
+        cat_features = torch.cat(squeeze_features, 1)
 
         out = cat_features
         for i in range(3):
             out = self.convs[("pose", i)](out)
             if i != 2:
                 out = self.relu(out)
-
+        
         out = out.mean(3).mean(2)
 
         out = 0.01 * out.view(-1, self.num_frames_to_predict_for, 1, 6)

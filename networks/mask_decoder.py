@@ -8,7 +8,7 @@ from utils.torch_utils import *
 
 
 class MaskDecoder(nn.Module):
-    def __init__(self, num_ch_enc, num_output_channels=1, use_skips=True):
+    def __init__(self, num_ch_enc, num_output_channels=5, use_skips=True):
         super(MaskDecoder, self).__init__()
 
         self.num_output_channels = num_output_channels
@@ -35,11 +35,10 @@ class MaskDecoder(nn.Module):
             self.convs[("upconv", i, 1)] = ConvBlock(num_ch_in, num_ch_out)
         
         self.convs[("maskconv", 0)] = Conv3x3(self.num_ch_dec[0], self.num_output_channels)
-
-        self.decoder = nn.ModuleList(list(self.convs.values()))
         
-        # Not needed
-        # self.sigmoid = nn.Sigmoid()
+        self.softmax = nn.Softmax(dim=1)
+
+        self.decoder = nn.ModuleList(list(self.convs.values()))        
     
     
     def forward(self, input_features):
@@ -55,7 +54,20 @@ class MaskDecoder(nn.Module):
             x = torch.cat(x, 1)
             x = self.convs[("upconv", i, 1)](x)
             
+        if i == 0 :
             # needs to be fed through the masking process not the sigmoid 
-            # self.outputs[("masks", i)] = self.sigmoid(self.convs[("maskconv", i)](x))
+            masks = self.convs[("maskconv", i)](x)
+            
+            for j in range(self.num_output_channels):
+                masks[:, j, :, :] *= j + 1
+            
+            masks = self.softmax(masks)
+            self.outputs[("masks", i)] = masks
+                
+
+        # Shape (Batch, num_masks, img_width, img_height)
+        # torch.Size([12, 5, 192, 640])
+        
+
 
         return self.outputs
