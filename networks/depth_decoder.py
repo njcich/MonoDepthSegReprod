@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,7 +17,6 @@ class DepthDecoder(nn.Module):
         self.num_ch_enc = num_ch_enc
         self.num_ch_dec = np.array([16, 32, 64, 128, 256])
 
-        # decoder
         self.convs = OrderedDict()
 
         for i in range(4, -1, -1):
@@ -43,8 +41,8 @@ class DepthDecoder(nn.Module):
     def forward(self, input_features):
         self.outputs = {}
 
-        # decoder
         x = input_features[-1]
+        
         for i in range(4, -1, -1):
             x = self.convs[("upconv", i, 0)](x)
             x = [upsample(x)]

@@ -1,5 +1,3 @@
-# Copyright Niantic 2019. Patent Pending. All rights reserved.
-
 from trainer import Trainer
 from options import MonodepthOptions
 

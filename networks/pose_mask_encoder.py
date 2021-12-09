@@ -45,7 +45,6 @@ class PoseMaskEncoder(nn.Module):
 
         loaded['conv1.weight'] = torch.cat([loaded['conv1.weight']] * num_input_images, 1) / num_input_images
         
-        # Add Depth Channel
         depth = torch.mean(loaded['conv1.weight'], 1, keepdim=True)
         loaded['conv1.weight'] = torch.cat([depth, loaded['conv1.weight']], 1) 
 
@@ -56,9 +55,11 @@ class PoseMaskEncoder(nn.Module):
 
     def forward(self, input_image):
         self.features = []
+        
         x = (input_image - 0.45) / 0.225
         x = self.encoder.conv1(x)
         x = self.encoder.bn1(x)
+        
         self.features.append(self.encoder.relu(x))
         self.features.append(self.encoder.layer1(self.encoder.maxpool(self.features[-1])))
         self.features.append(self.encoder.layer2(self.features[-1]))

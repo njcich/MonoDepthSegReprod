@@ -20,7 +20,6 @@ class MaskDecoder(nn.Module):
 
         self.convs = OrderedDict()
         
-        # TODO: Change last channel to be K masks
         for i in range(4, -1, -1):
             # upconv_0
             num_ch_in = self.num_ch_enc[-1] if i == 4 else self.num_ch_dec[i + 1]
@@ -55,7 +54,6 @@ class MaskDecoder(nn.Module):
             x = self.convs[("upconv", i, 1)](x)
             
         if i == 0 :
-            # needs to be fed through the masking process not the sigmoid 
             masks = self.convs[("maskconv", i)](x)
             
             for j in range(self.num_output_channels):
@@ -64,10 +62,5 @@ class MaskDecoder(nn.Module):
             masks = self.softmax(masks)
             self.outputs[("masks", i)] = masks
                 
-
-        # Shape (Batch, num_masks, img_width, img_height)
-        # torch.Size([12, 5, 192, 640])
-        
-
 
         return self.outputs

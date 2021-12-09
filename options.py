@@ -26,7 +26,23 @@ class MonodepthOptions:
                                    type=str,
                                    help="log directory",
                                    default=os.path.join(os.path.expanduser("~"), "tmp"))
+          
+          
+          
+          # mask and depth validation arguments
+          self.parser.add_argument("--val_log_dir",
+                                   type=str,
+                                   help="depth and masking validation log directory",
+                                   default=os.path.join(os.path.expanduser("~"), "depth_masking_validation"))
 
+          self.parser.add_argument("--num_val_batches",
+                                   type=int,
+                                   help="number of batches to validate for",
+                                   default=1)
+          
+          
+          
+          
           # TRAINING options
           self.parser.add_argument("--model_name",
                                    type=str,
@@ -70,7 +86,7 @@ class MonodepthOptions:
           self.parser.add_argument("--max_depth",
                                    type=float,
                                    help="maximum depth",
-                                   default=100.0)
+                                   default=80.0)
           
           self.parser.add_argument("--frame_ids",
                                    nargs="+",
@@ -103,7 +119,7 @@ class MonodepthOptions:
           self.parser.add_argument("--num_K",
                                    type=int,
                                    help="number of masks and poses to predict",
-                                   default=1)
+                                   default=5)
      
           # SYSTEM options
           self.parser.add_argument("--num_workers",
@@ -114,13 +130,14 @@ class MonodepthOptions:
           # LOADING options
           self.parser.add_argument("--load_weights_folder",
                                    type=str,
-                                   help="name of model to load")
+                                   help="name of model to load", 
+                                   default=None)
           
           self.parser.add_argument("--models_to_load",
                                    nargs="+",
                                    type=str,
                                    help="networks to load",
-                                   default=["encoder", "depth", "pose_encoder", "pose"])
+                                   default=["depth_encoder", "depth_decoder", "pose_mask_encoder", "mask_decoder", "pose_decoder"])
 
           # LOGGING options
           self.parser.add_argument("--log_frequency",
